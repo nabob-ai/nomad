@@ -1,0 +1,812 @@
+package workflow
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/nabob-ai/nomad/pkg/agent"
+	"github.com/nabob-ai/nomad/pkg/core"
+	"github.com/nabob-ai/nomad/pkg/stream"
+)
+
+// Step 步骤接口
+type Step interface {
+	ID() string
+	Name() string
+	Type() StepType
+	Description() string
+	Execute(ctx context.Context, input *StepInput) *stream.Reader[*StepOutput]
+	Config() *StepConfig
+}
+
+// ===== AgentStep =====
+
+type AgentStep struct {
+	id          string
+	name        string
+	description string
+	agent       *agent.Agent
+	config      *StepConfig
+}
+
+func NewAgentStep(name string, agent *agent.Agent) *AgentStep {
+	return &AgentStep{
+		id:    uuid.New().String(),
+		name:  name,
+		agent: agent,
+		config: &StepConfig{
+			Name:        name,
+			Type:        StepTypeAgent,
+			MaxRetries:  3,
+			Timeout:     5 * time.Minute,
+			SkipOnError: false,
+		},
+	}
+}
+
+func (s *AgentStep) ID() string          { return s.id }
+func (s *AgentStep) Name() string        { return s.name }
+func (s *AgentStep) Type() StepType      { return StepTypeAgent }
+func (s *AgentStep) Description() string { return s.description }
+func (s *AgentStep) Config() *StepConfig { return s.config }
+
+func (s *AgentStep) Execute(ctx context.Context, input *StepInput) *stream.Reader[*StepOutput] {
+	reader, writer := stream.Pipe[*StepOutput](1)
+
+	go func() {
+		defer writer.Close()
+		startTime := time.Now()
+
+		inputMessage := input.GetInputAsString()
+		if inputMessage == "" && input.PreviousStepContent != nil {
+			if str, ok := input.PreviousStepContent.(string); ok {
+				inputMessage = str
+			}
+		}
+
+		output := &StepOutput{
+			StepID:    s.id,
+			StepName:  s.name,
+			StepType:  StepTypeAgent,
+			Content:   fmt.Sprintf("Agent %s processed: %s", s.name, inputMessage),
+			StartTime: startTime,
+			EndTime:   time.Now(),
+			Metadata:  make(map[string]any),
+			Metrics:   &StepMetrics{ExecutionTime: time.Since(startTime).Seconds()},
+		}
+		output.Duration = output.EndTime.Sub(output.StartTime).Seconds()
+		writer.Send(output, nil)
+	}()
+
+	return reader
+}
+
+func (s *AgentStep) WithDescription(desc string) *AgentStep {
+	s.description = desc
+	return s
+}
+
+func (s *AgentStep) WithTimeout(timeout time.Duration) *AgentStep {
+	s.config.Timeout = timeout
+	return s
+}
+
+// ===== RoomStep =====
+
+type RoomStep struct {
+	id          string
+	name        string
+	description string
+	room        *core.Room
+	config      *StepConfig
+}
+
+func NewRoomStep(name string, room *core.Room) *RoomStep {
+	return &RoomStep{
+		id:   uuid.New().String(),
+		name: name,
+		room: room,
+		config: &StepConfig{
+			Name:        name,
+			Type:        StepTypeRoom,
+			MaxRetries:  3,
+			Timeout:     10 * time.Minute,
+			SkipOnError: false,
+		},
+	}
+}
+
+func (s *RoomStep) ID() string          { return s.id }
+func (s *RoomStep) Name() string        { return s.name }
+func (s *RoomStep) Type() StepType      { return StepTypeRoom }
+func (s *RoomStep) Description() string { return s.description }
+func (s *RoomStep) Config() *StepConfig { return s.config }
+
+func (s *RoomStep) Execute(ctx context.Context, input *StepInput) *stream.Reader[*StepOutput] {
+	reader, writer := stream.Pipe[*StepOutput](1)
+
+	go func() {
+		defer writer.Close()
+		startTime := time.Now()
+
+		inputMessage := input.GetInputAsString()
+		if inputMessage == "" && input.PreviousStepContent != nil {
+			if str, ok := input.PreviousStepContent.(string); ok {
+				inputMessage = str
+			}
+		}
+
+		output := &StepOutput{
+			StepID:    s.id,
+			StepName:  s.name,
+			StepType:  StepTypeRoom,
+			Content:   fmt.Sprintf("Room %s processed: %s", s.name, inputMessage),
+			StartTime: startTime,
+			EndTime:   time.Now(),
+			Metadata:  make(map[string]any),
+			Metrics:   &StepMetrics{ExecutionTime: time.Since(startTime).Seconds()},
+		}
+		output.Duration = output.EndTime.Sub(output.StartTime).Seconds()
+		writer.Send(output, nil)
+	}()
+
+	return reader
+}
+
+func (s *RoomStep) WithDescription(desc string) *RoomStep {
+	s.description = desc
+	return s
+}
+
+// ===== FunctionStep =====
+
+type FunctionStep struct {
+	id          string
+	name        string
+	description string
+	executor    func(ctx context.Context, input *StepInput) (*StepOutput, error)
+	config      *StepConfig
+}
+
+func NewFunctionStep(name string, executor func(ctx context.Context, input *StepInput) (*StepOutput, error)) *FunctionStep {
+	return &FunctionStep{
+		id:       uuid.New().String(),
+		name:     name,
+		executor: executor,
+		config: &StepConfig{
+			Name:        name,
+			Type:        StepTypeFunction,
+			MaxRetries:  1,
+			Timeout:     1 * time.Minute,
+			SkipOnError: false,
+		},
+	}
+}
+
+func (s *FunctionStep) ID() string          { return s.id }
+func (s *FunctionStep) Name() string        { return s.name }
+func (s *FunctionStep) Type() StepType      { return StepTypeFunction }
+func (s *FunctionStep) Description() string { return s.description }
+func (s *FunctionStep) Config() *StepConfig { return s.config }
+
+func (s *FunctionStep) Execute(ctx context.Context, input *StepInput) *stream.Reader[*StepOutput] {
+	reader, writer := stream.Pipe[*StepOutput](1)
+
+	go func() {
+		defer writer.Close()
+		startTime := time.Now()
+
+		output, err := s.executor(ctx, input)
+		if err != nil {
+			errorOutput := &StepOutput{
+				StepID:    s.id,
+				StepName:  s.name,
+				StepType:  StepTypeFunction,
+				Error:     err,
+				StartTime: startTime,
+				EndTime:   time.Now(),
+			}
+			errorOutput.Duration = errorOutput.EndTime.Sub(errorOutput.StartTime).Seconds()
+			writer.Send(errorOutput, err)
+			return
+		}
+
+		if output != nil {
+			output.StepID = s.id
+			output.StepName = s.name
+			output.StepType = StepTypeFunction
+			output.StartTime = startTime
+			output.EndTime = time.Now()
+			output.Duration = output.EndTime.Sub(output.StartTime).Seconds()
+			if output.Metrics == nil {
+				output.Metrics = &StepMetrics{}
+			}
+			output.Metrics.ExecutionTime = output.Duration
+		}
+		writer.Send(output, nil)
+	}()
+
+	return reader
+}
+
+func (s *FunctionStep) WithDescription(desc string) *FunctionStep {
+	s.description = desc
+	return s
+}
+
+func (s *FunctionStep) WithTimeout(timeout time.Duration) *FunctionStep {
+	s.config.Timeout = timeout
+	return s
+}
+
+// ===== Helper Functions =====
+
+func SimpleFunction(name string, fn func(input any) (any, error)) *FunctionStep {
+	return NewFunctionStep(name, func(ctx context.Context, stepInput *StepInput) (*StepOutput, error) {
+		input := stepInput.Input
+		if input == nil && stepInput.PreviousStepContent != nil {
+			input = stepInput.PreviousStepContent
+		}
+
+		output, err := fn(input)
+		if err != nil {
+			return nil, err
+		}
+
+		return &StepOutput{
+			Content:  output,
+			Metadata: make(map[string]any),
+		}, nil
+	})
+}
+
+func TransformFunction(name string, transform func(input any) any) *FunctionStep {
+	return SimpleFunction(name, func(input any) (any, error) {
+		return transform(input), nil
+	})
+}
+
+// ===== ConditionStep =====
+
+type ConditionStep struct {
+	id          string
+	name        string
+	description string
+	condition   func(*StepInput) bool
+	ifTrue      Step
+	ifFalse     Step
+	config      *StepConfig
+}
+
+func NewConditionStep(name string, condition func(*StepInput) bool, ifTrue, ifFalse Step) *ConditionStep {
+	return &ConditionStep{
+		id:        uuid.New().String(),
+		name:      name,
+		condition: condition,
+		ifTrue:    ifTrue,
+		ifFalse:   ifFalse,
+		config: &StepConfig{
+			Name:        name,
+			Type:        StepTypeCondition,
+			MaxRetries:  1,
+			Timeout:     5 * time.Minute,
+			SkipOnError: false,
+		},
+	}
+}
+
+func (s *ConditionStep) ID() string          { return s.id }
+func (s *ConditionStep) Name() string        { return s.name }
+func (s *ConditionStep) Type() StepType      { return StepTypeCondition }
+func (s *ConditionStep) Description() string { return s.description }
+func (s *ConditionStep) Config() *StepConfig { return s.config }
+
+func (s *ConditionStep) Execute(ctx context.Context, input *StepInput) *stream.Reader[*StepOutput] {
+	reader, writer := stream.Pipe[*StepOutput](1)
+
+	go func() {
+		defer writer.Close()
+		startTime := time.Now()
+
+		conditionResult := s.condition(input)
+
+		var branch Step
+		var branchName string
+		if conditionResult {
+			branch = s.ifTrue
+			branchName = "true"
+		} else {
+			branch = s.ifFalse
+			branchName = "false"
+		}
+
+		var branchOutput *StepOutput
+		branchReader := branch.Execute(ctx, input)
+		for {
+			output, err := branchReader.Recv()
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				errorOutput := &StepOutput{
+					StepID:    s.id,
+					StepName:  s.name,
+					StepType:  StepTypeCondition,
+					Error:     err,
+					StartTime: startTime,
+					EndTime:   time.Now(),
+					Metadata:  map[string]any{"condition": conditionResult, "branch": branchName},
+				}
+				errorOutput.Duration = errorOutput.EndTime.Sub(errorOutput.StartTime).Seconds()
+				writer.Send(errorOutput, err)
+				return
+			}
+			branchOutput = output
+		}
+
+		output := &StepOutput{
+			StepID:      s.id,
+			StepName:    s.name,
+			StepType:    StepTypeCondition,
+			Content:     branchOutput.Content,
+			StartTime:   startTime,
+			EndTime:     time.Now(),
+			NestedSteps: []*StepOutput{branchOutput},
+			Metadata:    map[string]any{"condition": conditionResult, "branch": branchName},
+			Metrics:     &StepMetrics{ExecutionTime: time.Since(startTime).Seconds()},
+		}
+		output.Duration = output.EndTime.Sub(output.StartTime).Seconds()
+		writer.Send(output, nil)
+	}()
+
+	return reader
+}
+
+// ===== LoopStep =====
+
+type LoopStep struct {
+	id            string
+	name          string
+	description   string
+	body          Step
+	maxIterations int
+	stopCondition func(*StepOutput) bool
+	config        *StepConfig
+}
+
+func NewLoopStep(name string, body Step, maxIterations int) *LoopStep {
+	return &LoopStep{
+		id:            uuid.New().String(),
+		name:          name,
+		body:          body,
+		maxIterations: maxIterations,
+		config: &StepConfig{
+			Name:        name,
+			Type:        StepTypeLoop,
+			MaxRetries:  1,
+			Timeout:     30 * time.Minute,
+			SkipOnError: false,
+		},
+	}
+}
+
+func (s *LoopStep) ID() string          { return s.id }
+func (s *LoopStep) Name() string        { return s.name }
+func (s *LoopStep) Type() StepType      { return StepTypeLoop }
+func (s *LoopStep) Description() string { return s.description }
+func (s *LoopStep) Config() *StepConfig { return s.config }
+
+func (s *LoopStep) Execute(ctx context.Context, input *StepInput) *stream.Reader[*StepOutput] {
+	reader, writer := stream.Pipe[*StepOutput](1)
+
+	go func() {
+		defer writer.Close()
+		startTime := time.Now()
+
+		var iterations []*StepOutput
+		var lastOutput *StepOutput
+
+		for i := range s.maxIterations {
+			loopInput := &StepInput{
+				Input:               input.Input,
+				PreviousStepOutputs: input.PreviousStepOutputs,
+				AdditionalData:      input.AdditionalData,
+				SessionState:        input.SessionState,
+			}
+
+			if lastOutput != nil {
+				loopInput.PreviousStepContent = lastOutput.Content
+			}
+
+			var iterOutput *StepOutput
+			bodyReader := s.body.Execute(ctx, loopInput)
+			for {
+				output, err := bodyReader.Recv()
+				if err != nil {
+					if errors.Is(err, io.EOF) {
+						break
+					}
+					errorOutput := &StepOutput{
+						StepID:      s.id,
+						StepName:    s.name,
+						StepType:    StepTypeLoop,
+						Error:       err,
+						StartTime:   startTime,
+						EndTime:     time.Now(),
+						NestedSteps: iterations,
+						Metadata:    map[string]any{"iterations": i, "max": s.maxIterations},
+					}
+					errorOutput.Duration = errorOutput.EndTime.Sub(errorOutput.StartTime).Seconds()
+					writer.Send(errorOutput, err)
+					return
+				}
+				iterOutput = output
+			}
+
+			iterations = append(iterations, iterOutput)
+			lastOutput = iterOutput
+
+			if s.stopCondition != nil && s.stopCondition(iterOutput) {
+				break
+			}
+
+			if ctx.Err() != nil {
+				writer.Send(nil, ctx.Err())
+				return
+			}
+		}
+
+		output := &StepOutput{
+			StepID:      s.id,
+			StepName:    s.name,
+			StepType:    StepTypeLoop,
+			Content:     lastOutput.Content,
+			StartTime:   startTime,
+			EndTime:     time.Now(),
+			NestedSteps: iterations,
+			Metadata:    map[string]any{"iterations": len(iterations), "max": s.maxIterations},
+			Metrics:     &StepMetrics{ExecutionTime: time.Since(startTime).Seconds()},
+		}
+		output.Duration = output.EndTime.Sub(output.StartTime).Seconds()
+		writer.Send(output, nil)
+	}()
+
+	return reader
+}
+
+func (s *LoopStep) WithStopCondition(condition func(*StepOutput) bool) *LoopStep {
+	s.stopCondition = condition
+	return s
+}
+
+// ===== ParallelStep =====
+
+type ParallelStep struct {
+	id          string
+	name        string
+	description string
+	steps       []Step
+	config      *StepConfig
+}
+
+func NewParallelStep(name string, steps ...Step) *ParallelStep {
+	return &ParallelStep{
+		id:    uuid.New().String(),
+		name:  name,
+		steps: steps,
+		config: &StepConfig{
+			Name:        name,
+			Type:        StepTypeParallel,
+			MaxRetries:  1,
+			Timeout:     10 * time.Minute,
+			SkipOnError: false,
+		},
+	}
+}
+
+func (s *ParallelStep) ID() string          { return s.id }
+func (s *ParallelStep) Name() string        { return s.name }
+func (s *ParallelStep) Type() StepType      { return StepTypeParallel }
+func (s *ParallelStep) Description() string { return s.description }
+func (s *ParallelStep) Config() *StepConfig { return s.config }
+
+func (s *ParallelStep) Execute(ctx context.Context, input *StepInput) *stream.Reader[*StepOutput] {
+	reader, writer := stream.Pipe[*StepOutput](1)
+
+	go func() {
+		defer writer.Close()
+		startTime := time.Now()
+
+		var wg sync.WaitGroup
+		results := make([]*StepOutput, len(s.steps))
+		errs := make([]error, len(s.steps))
+
+		for i, step := range s.steps {
+			wg.Add(1)
+			go func(index int, st Step) {
+				defer wg.Done()
+				stepReader := st.Execute(ctx, input)
+				for {
+					output, err := stepReader.Recv()
+					if err != nil {
+						if errors.Is(err, io.EOF) {
+							break
+						}
+						errs[index] = err
+						return
+					}
+					results[index] = output
+				}
+			}(i, step)
+		}
+
+		wg.Wait()
+
+		var firstError error
+		for _, err := range errs {
+			if err != nil {
+				firstError = err
+				break
+			}
+		}
+
+		if firstError != nil {
+			errorOutput := &StepOutput{
+				StepID:      s.id,
+				StepName:    s.name,
+				StepType:    StepTypeParallel,
+				Error:       firstError,
+				StartTime:   startTime,
+				EndTime:     time.Now(),
+				NestedSteps: results,
+				Metadata:    map[string]any{"parallel_steps": len(s.steps)},
+			}
+			errorOutput.Duration = errorOutput.EndTime.Sub(errorOutput.StartTime).Seconds()
+			writer.Send(errorOutput, firstError)
+			return
+		}
+
+		combinedContent := make(map[string]any)
+		for i, result := range results {
+			if result != nil {
+				combinedContent[fmt.Sprintf("step_%d", i)] = result.Content
+			}
+		}
+
+		output := &StepOutput{
+			StepID:      s.id,
+			StepName:    s.name,
+			StepType:    StepTypeParallel,
+			Content:     combinedContent,
+			StartTime:   startTime,
+			EndTime:     time.Now(),
+			NestedSteps: results,
+			Metadata:    map[string]any{"parallel_steps": len(s.steps)},
+			Metrics:     &StepMetrics{ExecutionTime: time.Since(startTime).Seconds()},
+		}
+		output.Duration = output.EndTime.Sub(output.StartTime).Seconds()
+		writer.Send(output, nil)
+	}()
+
+	return reader
+}
+
+// ===== RouterStep =====
+
+type RouterStep struct {
+	id          string
+	name        string
+	description string
+	router      func(*StepInput) string
+	routes      map[string]Step
+	defaultStep Step
+	config      *StepConfig
+}
+
+func NewRouterStep(name string, router func(*StepInput) string, routes map[string]Step) *RouterStep {
+	return &RouterStep{
+		id:     uuid.New().String(),
+		name:   name,
+		router: router,
+		routes: routes,
+		config: &StepConfig{
+			Name:        name,
+			Type:        StepTypeRouter,
+			MaxRetries:  1,
+			Timeout:     5 * time.Minute,
+			SkipOnError: false,
+		},
+	}
+}
+
+func (s *RouterStep) ID() string          { return s.id }
+func (s *RouterStep) Name() string        { return s.name }
+func (s *RouterStep) Type() StepType      { return StepTypeRouter }
+func (s *RouterStep) Description() string { return s.description }
+func (s *RouterStep) Config() *StepConfig { return s.config }
+
+func (s *RouterStep) Execute(ctx context.Context, input *StepInput) *stream.Reader[*StepOutput] {
+	reader, writer := stream.Pipe[*StepOutput](1)
+
+	go func() {
+		defer writer.Close()
+		startTime := time.Now()
+
+		routeName := s.router(input)
+		step, exists := s.routes[routeName]
+		if !exists {
+			if s.defaultStep == nil {
+				err := fmt.Errorf("route '%s' not found", routeName)
+				errorOutput := &StepOutput{
+					StepID:    s.id,
+					StepName:  s.name,
+					StepType:  StepTypeRouter,
+					Error:     err,
+					StartTime: startTime,
+					EndTime:   time.Now(),
+					Metadata:  map[string]any{"route": routeName},
+				}
+				errorOutput.Duration = errorOutput.EndTime.Sub(errorOutput.StartTime).Seconds()
+				writer.Send(errorOutput, err)
+				return
+			}
+			step = s.defaultStep
+			routeName = "default"
+		}
+
+		var routeOutput *StepOutput
+		stepReader := step.Execute(ctx, input)
+		for {
+			output, err := stepReader.Recv()
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				errorOutput := &StepOutput{
+					StepID:    s.id,
+					StepName:  s.name,
+					StepType:  StepTypeRouter,
+					Error:     err,
+					StartTime: startTime,
+					EndTime:   time.Now(),
+					Metadata:  map[string]any{"route": routeName},
+				}
+				errorOutput.Duration = errorOutput.EndTime.Sub(errorOutput.StartTime).Seconds()
+				writer.Send(errorOutput, err)
+				return
+			}
+			routeOutput = output
+		}
+
+		output := &StepOutput{
+			StepID:      s.id,
+			StepName:    s.name,
+			StepType:    StepTypeRouter,
+			Content:     routeOutput.Content,
+			StartTime:   startTime,
+			EndTime:     time.Now(),
+			NestedSteps: []*StepOutput{routeOutput},
+			Metadata:    map[string]any{"route": routeName},
+			Metrics:     &StepMetrics{ExecutionTime: time.Since(startTime).Seconds()},
+		}
+		output.Duration = output.EndTime.Sub(output.StartTime).Seconds()
+		writer.Send(output, nil)
+	}()
+
+	return reader
+}
+
+func (s *RouterStep) WithDefault(step Step) *RouterStep {
+	s.defaultStep = step
+	return s
+}
+
+// ===== StepsGroup =====
+
+type StepsGroup struct {
+	id          string
+	name        string
+	description string
+	steps       []Step
+	config      *StepConfig
+}
+
+func NewStepsGroup(name string, steps ...Step) *StepsGroup {
+	return &StepsGroup{
+		id:    uuid.New().String(),
+		name:  name,
+		steps: steps,
+		config: &StepConfig{
+			Name:        name,
+			Type:        StepTypeSteps,
+			MaxRetries:  1,
+			Timeout:     30 * time.Minute,
+			SkipOnError: false,
+		},
+	}
+}
+
+func (s *StepsGroup) ID() string          { return s.id }
+func (s *StepsGroup) Name() string        { return s.name }
+func (s *StepsGroup) Type() StepType      { return StepTypeSteps }
+func (s *StepsGroup) Description() string { return s.description }
+func (s *StepsGroup) Config() *StepConfig { return s.config }
+
+func (s *StepsGroup) Execute(ctx context.Context, input *StepInput) *stream.Reader[*StepOutput] {
+	reader, writer := stream.Pipe[*StepOutput](1)
+
+	go func() {
+		defer writer.Close()
+		startTime := time.Now()
+
+		var outputs []*StepOutput
+		var lastOutput *StepOutput
+
+		for _, step := range s.steps {
+			stepInput := &StepInput{
+				Input:               input.Input,
+				PreviousStepOutputs: input.PreviousStepOutputs,
+				AdditionalData:      input.AdditionalData,
+				SessionState:        input.SessionState,
+			}
+
+			if lastOutput != nil {
+				stepInput.PreviousStepContent = lastOutput.Content
+			}
+
+			var stepOutput *StepOutput
+			stepReader := step.Execute(ctx, stepInput)
+			for {
+				output, err := stepReader.Recv()
+				if err != nil {
+					if errors.Is(err, io.EOF) {
+						break
+					}
+					errorOutput := &StepOutput{
+						StepID:      s.id,
+						StepName:    s.name,
+						StepType:    StepTypeSteps,
+						Error:       err,
+						StartTime:   startTime,
+						EndTime:     time.Now(),
+						NestedSteps: outputs,
+						Metadata:    map[string]any{"completed": len(outputs), "total": len(s.steps)},
+					}
+					errorOutput.Duration = errorOutput.EndTime.Sub(errorOutput.StartTime).Seconds()
+					writer.Send(errorOutput, err)
+					return
+				}
+				stepOutput = output
+			}
+
+			outputs = append(outputs, stepOutput)
+			lastOutput = stepOutput
+
+			if ctx.Err() != nil {
+				writer.Send(nil, ctx.Err())
+				return
+			}
+		}
+
+		output := &StepOutput{
+			StepID:      s.id,
+			StepName:    s.name,
+			StepType:    StepTypeSteps,
+			Content:     lastOutput.Content,
+			StartTime:   startTime,
+			EndTime:     time.Now(),
+			NestedSteps: outputs,
+			Metadata:    map[string]any{"completed": len(outputs), "total": len(s.steps)},
+			Metrics:     &StepMetrics{ExecutionTime: time.Since(startTime).Seconds()},
+		}
+		output.Duration = output.EndTime.Sub(output.StartTime).Seconds()
+		writer.Send(output, nil)
+	}()
+
+	return reader
+}

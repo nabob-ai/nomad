@@ -1,0 +1,211 @@
+# nomad  - Git Ignore 配置
+
+# ============================
+# Go 相关
+# ============================
+# 编译产物
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/bin/
+/dist/
+
+# Go 依赖
+/vendor/
+go.work
+go.work.sum
+
+# ============================
+# nomad 项目特定
+# ============================
+# 数据存储目录
+.nomad/
+.nomad-*/
+.agentsdk/
+.agentsdk-*/
+
+# 配置文件（包含敏感信息）
+nomad.local.yaml
+*.local.yaml
+*.secret.yaml
+
+# 日志文件
+*.log
+logs/
+
+# 备份文件
+*.backup
+*.bak
+backup/
+
+# 临时文件
+tmp/
+temp/
+*.tmp
+
+# ============================
+# 数据库
+# ============================
+*.db
+*.sqlite
+*.sqlite3
+.data/
+
+# ============================
+# IDE 和编辑器
+# ============================
+# VS Code
+.vscode/
+*.code-workspace
+
+# JetBrains IDEs (GoLand, IntelliJ, etc.)
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Vim
+*.swp
+*.swo
+*~
+.*.sw?
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ============================
+# 操作系统
+# ============================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+
+# ============================
+# Node.js (Client SDKs)
+# ============================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+dist/
+.next/
+.nuxt/
+.cache/
+
+# 保留 docs 目录的 package-lock.json (GitHub Actions 需要)
+!docs/package-lock.json
+
+# ============================
+# Python (Skills)
+# ============================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+.pytest_cache/
+
+# ============================
+# 测试和覆盖率
+# ============================
+coverage.txt
+coverage.html
+*.test
+*.prof
+*.coverprofile
+
+# ============================
+# 文档构建
+# ============================
+.nuxt/
+.output/
+
+# 忽略构建输出，但保留静态资源
+/docs/.output/
+/docs/public/
+# 保留 docs/public/images/ 用于 README 图片
+!docs/public/images/
+
+# ============================
+# 安全和密钥
+# ============================
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+.env
+.env.local
+.env.*.local
+secrets/
+credentials/
+
+# API Keys
+*_API_KEY
+*.secret
+
+# ============================
+# Docker
+# ============================
+.dockerignore
+
+# ============================
+# 其他
+# ============================
+# 大文件
+*.tar
+*.tar.gz
+*.zip
+*.rar
+
+# 工作区
+workspace/
+scratch/
+
+# 生成的文件
+generated/
+proto/gen/
+
+# 编译产物
+/nomad
+/nomad-server
+/nomad-server-studio
+examples/*/agent
+examples/*/agent-*
+examples/*/*-demo
+.kiro
+article-writer-web-service/
+
+# lwmacct conventions
+.local/
+.task/
+Taskfile.yml

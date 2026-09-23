@@ -1,0 +1,453 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nomad.dev/schemas/ui-protocol.schema.json",
+  "title": "Nomad UI Protocol",
+  "description": "声明式 UI 协议，借鉴 Google A2UI 设计理念。核心理念：Safe like data, but expressive like code",
+  "definitions": {
+    "PropertyValue": {
+      "description": "属性值类型，支持字面值和路径引用（数据绑定）",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "literalString": { "type": "string" }
+          },
+          "required": ["literalString"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "literalNumber": { "type": "number" }
+          },
+          "required": ["literalNumber"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "literalBoolean": { "type": "boolean" }
+          },
+          "required": ["literalBoolean"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "pattern": "^/.*$",
+              "description": "JSON Pointer 路径引用"
+            }
+          },
+          "required": ["path"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ComponentArrayReference": {
+      "description": "子组件引用，支持显式列表和模板两种方式",
+      "type": "object",
+      "properties": {
+        "explicitList": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "显式 ID 列表"
+        },
+        "template": {
+          "type": "object",
+          "properties": {
+            "componentId": { "type": "string" },
+            "dataBinding": {
+              "type": "string",
+              "pattern": "^/.*$"
+            }
+          },
+          "required": ["componentId", "dataBinding"],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "TextUsageHint": {
+      "type": "string",
+      "enum": ["h1", "h2", "h3", "h4", "h5", "caption", "body"]
+    },
+    "ImageUsageHint": {
+      "type": "string",
+      "enum": ["icon", "avatar", "smallFeature", "mediumFeature", "largeFeature", "header"]
+    },
+    "ButtonVariant": {
+      "type": "string",
+      "enum": ["primary", "secondary", "text"]
+    },
+    "Alignment": {
+      "type": "string",
+      "enum": ["start", "center", "end", "stretch"]
+    },
+    "DividerOrientation": {
+      "type": "string",
+      "enum": ["horizontal", "vertical"]
+    },
+    "DateTimeInputType": {
+      "type": "string",
+      "enum": ["date", "time", "datetime"]
+    },
+    "TextFieldInputType": {
+      "type": "string",
+      "enum": ["text", "password", "email", "number", "tel", "url"]
+    },
+    "MultipleChoiceDirection": {
+      "type": "string",
+      "enum": ["horizontal", "vertical"]
+    },
+    "ComponentWeight": {
+      "type": "string",
+      "enum": ["initial", "final"]
+    },
+    "TextProps": {
+      "type": "object",
+      "properties": {
+        "text": { "$ref": "#/definitions/PropertyValue" },
+        "usageHint": { "$ref": "#/definitions/TextUsageHint" }
+      },
+      "required": ["text"],
+      "additionalProperties": false
+    },
+    "ImageProps": {
+      "type": "object",
+      "properties": {
+        "src": { "$ref": "#/definitions/PropertyValue" },
+        "alt": { "$ref": "#/definitions/PropertyValue" },
+        "usageHint": { "$ref": "#/definitions/ImageUsageHint" }
+      },
+      "required": ["src"],
+      "additionalProperties": false
+    },
+    "IconProps": {
+      "type": "object",
+      "properties": {
+        "name": { "$ref": "#/definitions/PropertyValue" },
+        "size": { "$ref": "#/definitions/PropertyValue" },
+        "color": { "$ref": "#/definitions/PropertyValue" }
+      },
+      "required": ["name"],
+      "additionalProperties": false
+    },
+    "VideoProps": {
+      "type": "object",
+      "properties": {
+        "src": { "$ref": "#/definitions/PropertyValue" },
+        "poster": { "$ref": "#/definitions/PropertyValue" },
+        "autoplay": { "$ref": "#/definitions/PropertyValue" },
+        "controls": { "$ref": "#/definitions/PropertyValue" },
+        "loop": { "$ref": "#/definitions/PropertyValue" },
+        "muted": { "$ref": "#/definitions/PropertyValue" }
+      },
+      "required": ["src"],
+      "additionalProperties": false
+    },
+    "AudioPlayerProps": {
+      "type": "object",
+      "properties": {
+        "src": { "$ref": "#/definitions/PropertyValue" },
+        "title": { "$ref": "#/definitions/PropertyValue" },
+        "autoplay": { "$ref": "#/definitions/PropertyValue" },
+        "loop": { "$ref": "#/definitions/PropertyValue" }
+      },
+      "required": ["src"],
+      "additionalProperties": false
+    },
+    "ButtonProps": {
+      "type": "object",
+      "properties": {
+        "label": { "$ref": "#/definitions/PropertyValue" },
+        "action": { "type": "string" },
+        "variant": { "$ref": "#/definitions/ButtonVariant" },
+        "disabled": { "$ref": "#/definitions/PropertyValue" },
+        "icon": { "$ref": "#/definitions/PropertyValue" }
+      },
+      "required": ["label", "action"],
+      "additionalProperties": false
+    },
+    "RowProps": {
+      "type": "object",
+      "properties": {
+        "children": { "$ref": "#/definitions/ComponentArrayReference" },
+        "gap": { "type": "integer", "minimum": 0 },
+        "align": { "$ref": "#/definitions/Alignment" },
+        "wrap": { "type": "boolean" }
+      },
+      "required": ["children"],
+      "additionalProperties": false
+    },
+    "ColumnProps": {
+      "type": "object",
+      "properties": {
+        "children": { "$ref": "#/definitions/ComponentArrayReference" },
+        "gap": { "type": "integer", "minimum": 0 },
+        "align": { "$ref": "#/definitions/Alignment" }
+      },
+      "required": ["children"],
+      "additionalProperties": false
+    },
+    "CardProps": {
+      "type": "object",
+      "properties": {
+        "children": { "$ref": "#/definitions/ComponentArrayReference" },
+        "title": { "$ref": "#/definitions/PropertyValue" },
+        "subtitle": { "$ref": "#/definitions/PropertyValue" },
+        "clickable": { "type": "boolean" },
+        "action": { "type": "string" }
+      },
+      "required": ["children"],
+      "additionalProperties": false
+    },
+    "ListProps": {
+      "type": "object",
+      "properties": {
+        "children": { "$ref": "#/definitions/ComponentArrayReference" },
+        "dividers": { "type": "boolean" }
+      },
+      "required": ["children"],
+      "additionalProperties": false
+    },
+    "TextFieldProps": {
+      "type": "object",
+      "properties": {
+        "value": { "$ref": "#/definitions/PropertyValue" },
+        "label": { "$ref": "#/definitions/PropertyValue" },
+        "placeholder": { "$ref": "#/definitions/PropertyValue" },
+        "multiline": { "type": "boolean" },
+        "disabled": { "$ref": "#/definitions/PropertyValue" },
+        "maxLength": { "type": "integer", "minimum": 0 },
+        "inputType": { "$ref": "#/definitions/TextFieldInputType" }
+      },
+      "required": ["value"],
+      "additionalProperties": false
+    },
+    "CheckboxProps": {
+      "type": "object",
+      "properties": {
+        "checked": { "$ref": "#/definitions/PropertyValue" },
+        "label": { "$ref": "#/definitions/PropertyValue" },
+        "disabled": { "$ref": "#/definitions/PropertyValue" }
+      },
+      "required": ["checked"],
+      "additionalProperties": false
+    },
+    "SelectProps": {
+      "type": "object",
+      "properties": {
+        "value": { "$ref": "#/definitions/PropertyValue" },
+        "options": { "$ref": "#/definitions/PropertyValue" },
+        "label": { "$ref": "#/definitions/PropertyValue" },
+        "placeholder": { "$ref": "#/definitions/PropertyValue" },
+        "disabled": { "$ref": "#/definitions/PropertyValue" },
+        "multiple": { "type": "boolean" }
+      },
+      "required": ["value", "options"],
+      "additionalProperties": false
+    },
+    "DateTimeInputProps": {
+      "type": "object",
+      "properties": {
+        "value": { "$ref": "#/definitions/PropertyValue" },
+        "label": { "$ref": "#/definitions/PropertyValue" },
+        "type": { "$ref": "#/definitions/DateTimeInputType" },
+        "disabled": { "$ref": "#/definitions/PropertyValue" },
+        "min": { "$ref": "#/definitions/PropertyValue" },
+        "max": { "$ref": "#/definitions/PropertyValue" }
+      },
+      "required": ["value"],
+      "additionalProperties": false
+    },
+    "SliderProps": {
+      "type": "object",
+      "properties": {
+        "value": { "$ref": "#/definitions/PropertyValue" },
+        "label": { "$ref": "#/definitions/PropertyValue" },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "step": { "type": "number" },
+        "disabled": { "$ref": "#/definitions/PropertyValue" },
+        "showValue": { "type": "boolean" }
+      },
+      "required": ["value"],
+      "additionalProperties": false
+    },
+    "MultipleChoiceProps": {
+      "type": "object",
+      "properties": {
+        "value": { "$ref": "#/definitions/PropertyValue" },
+        "options": { "$ref": "#/definitions/PropertyValue" },
+        "label": { "$ref": "#/definitions/PropertyValue" },
+        "disabled": { "$ref": "#/definitions/PropertyValue" },
+        "direction": { "$ref": "#/definitions/MultipleChoiceDirection" }
+      },
+      "required": ["value", "options"],
+      "additionalProperties": false
+    },
+    "DividerProps": {
+      "type": "object",
+      "properties": {
+        "orientation": { "$ref": "#/definitions/DividerOrientation" }
+      },
+      "additionalProperties": false
+    },
+    "ModalProps": {
+      "type": "object",
+      "properties": {
+        "open": { "$ref": "#/definitions/PropertyValue" },
+        "title": { "$ref": "#/definitions/PropertyValue" },
+        "children": { "$ref": "#/definitions/ComponentArrayReference" },
+        "closable": { "type": "boolean" },
+        "closeAction": { "type": "string" }
+      },
+      "required": ["open", "children"],
+      "additionalProperties": false
+    },
+    "TabDefinition": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "$ref": "#/definitions/PropertyValue" },
+        "content": { "$ref": "#/definitions/ComponentArrayReference" },
+        "icon": { "$ref": "#/definitions/PropertyValue" },
+        "disabled": { "type": "boolean" }
+      },
+      "required": ["id", "label", "content"],
+      "additionalProperties": false
+    },
+    "TabsProps": {
+      "type": "object",
+      "properties": {
+        "activeTab": { "$ref": "#/definitions/PropertyValue" },
+        "tabs": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/TabDefinition" },
+          "minItems": 1
+        }
+      },
+      "required": ["activeTab", "tabs"],
+      "additionalProperties": false
+    },
+    "CustomProps": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9]*$"
+        },
+        "props": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/PropertyValue" }
+        }
+      },
+      "required": ["type", "props"],
+      "additionalProperties": false
+    },
+    "ComponentSpec": {
+      "description": "组件规格（联合类型）",
+      "type": "object",
+      "properties": {
+        "Text": { "$ref": "#/definitions/TextProps" },
+        "Image": { "$ref": "#/definitions/ImageProps" },
+        "Icon": { "$ref": "#/definitions/IconProps" },
+        "Video": { "$ref": "#/definitions/VideoProps" },
+        "AudioPlayer": { "$ref": "#/definitions/AudioPlayerProps" },
+        "Button": { "$ref": "#/definitions/ButtonProps" },
+        "Row": { "$ref": "#/definitions/RowProps" },
+        "Column": { "$ref": "#/definitions/ColumnProps" },
+        "Card": { "$ref": "#/definitions/CardProps" },
+        "List": { "$ref": "#/definitions/ListProps" },
+        "TextField": { "$ref": "#/definitions/TextFieldProps" },
+        "Checkbox": { "$ref": "#/definitions/CheckboxProps" },
+        "Select": { "$ref": "#/definitions/SelectProps" },
+        "DateTimeInput": { "$ref": "#/definitions/DateTimeInputProps" },
+        "Slider": { "$ref": "#/definitions/SliderProps" },
+        "MultipleChoice": { "$ref": "#/definitions/MultipleChoiceProps" },
+        "Divider": { "$ref": "#/definitions/DividerProps" },
+        "Modal": { "$ref": "#/definitions/ModalProps" },
+        "Tabs": { "$ref": "#/definitions/TabsProps" },
+        "Custom": { "$ref": "#/definitions/CustomProps" }
+      },
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": false
+    },
+    "ComponentDefinition": {
+      "description": "组件定义（邻接表模型）",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "weight": { "$ref": "#/definitions/ComponentWeight" },
+        "component": { "$ref": "#/definitions/ComponentSpec" }
+      },
+      "required": ["id", "component"],
+      "additionalProperties": false
+    },
+    "SurfaceUpdateMessage": {
+      "description": "Surface 更新消息",
+      "type": "object",
+      "properties": {
+        "surfaceId": { "type": "string", "minLength": 1 },
+        "components": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ComponentDefinition" }
+        }
+      },
+      "required": ["surfaceId", "components"],
+      "additionalProperties": false
+    },
+    "DataModelUpdateMessage": {
+      "description": "数据模型更新消息",
+      "type": "object",
+      "properties": {
+        "surfaceId": { "type": "string", "minLength": 1 },
+        "path": {
+          "type": "string",
+          "pattern": "^/.*$",
+          "default": "/"
+        },
+        "contents": {}
+      },
+      "required": ["surfaceId", "contents"],
+      "additionalProperties": false
+    },
+    "BeginRenderingMessage": {
+      "description": "开始渲染消息",
+      "type": "object",
+      "properties": {
+        "surfaceId": { "type": "string", "minLength": 1 },
+        "root": { "type": "string", "minLength": 1 },
+        "styles": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "required": ["surfaceId", "root"],
+      "additionalProperties": false
+    },
+    "DeleteSurfaceMessage": {
+      "description": "删除 Surface 消息",
+      "type": "object",
+      "properties": {
+        "surfaceId": { "type": "string", "minLength": 1 }
+      },
+      "required": ["surfaceId"],
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "description": "Nomad UI 协议主消息结构",
+  "properties": {
+    "surfaceUpdate": { "$ref": "#/definitions/SurfaceUpdateMessage" },
+    "dataModelUpdate": { "$ref": "#/definitions/DataModelUpdateMessage" },
+    "beginRendering": { "$ref": "#/definitions/BeginRenderingMessage" },
+    "deleteSurface": { "$ref": "#/definitions/DeleteSurfaceMessage" }
+  },
+  "minProperties": 1,
+  "maxProperties": 1,
+  "additionalProperties": false
+}

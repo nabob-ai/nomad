@@ -1,0 +1,53 @@
+{
+  "name": "@nomad/client-js",
+  "version": "0.8.0",
+  "description": "JavaScript/TypeScript SDK for nomad - Full-featured AI Agent client with complete Agent management and Eval system",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\""
+  },
+  "keywords": [
+    "nomad",
+    "client",
+    "ai",
+    "agent",
+    "typescript",
+    "websocket",
+    "events"
+  ],
+  "license": "Apache-2.0 license",
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@types/ws": "^8.18.1",
+    "@typescript-eslint/eslint-plugin": "^8.48.0",
+    "@typescript-eslint/parser": "^8.48.0",
+    "eslint": "^9.39.1",
+    "prettier": "^3.6.2",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.14",
+    "@vitest/coverage-v8": "^4.0.14"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  }
+}
